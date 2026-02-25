@@ -50,14 +50,14 @@ h1 {
   color: #666;
 }
 
-  .input-group input {
-    width: 85%;
-    padding: 12px 12px 12px 40px;
-    border-radius: 10px;
-    border: 1px solid #ccc;
-    display: block;
-    margin: 0 auto;
-  }
+.input-group input {
+  width: 85%;
+  padding: 12px 12px 12px 40px;
+  border-radius: 10px;
+  border: 1px solid #ccc;
+  display: block;
+  margin: 0 auto;
+}
 
 button {
   width: 100%;
@@ -136,6 +136,8 @@ button:hover {
   background: rgba(255,255,255,0.1);
   border-radius: 15px;
 }
+
+#codeSection { margin-top: 10px; }
 </style>
 </head>
 
@@ -165,6 +167,15 @@ button:hover {
   <button onclick="register()"><i class="fa fa-user-plus"></i> Register</button>
   <button onclick="login()"><i class="fa fa-sign-in-alt"></i> Login</button>
   <button onclick="guestLogin()"><i class="fa fa-user"></i> Continue as Guest</button>
+
+  <!-- ✅ Email verification block -->
+  <div id="codeSection" style="display:none;">
+    <div class="input-group">
+      <i class="fa fa-key"></i>
+      <input type="text" id="codeInput" placeholder="Enter verification code (check spam)">
+    </div>
+    <button onclick="verifyCode()"><i class="fa fa-check"></i> Verify Email</button>
+  </div>
 
   <div id="feedback" class="feedback"></div>
 </div>
@@ -210,7 +221,33 @@ button:hover {
   <p>6. Logout when finished.</p>
 </div>
 
+<!-- ✅ EmailJS -->
+<script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
+
 <script>
+// =====================
+// EmailJS config (YOUR REAL KEYS)
+// =====================
+const EMAILJS_PUBLIC_KEY = "OF8tw55BMFQQIG8OM";
+const EMAILJS_SERVICE_ID = "service_xiyprvp";
+const EMAILJS_TEMPLATE_ID = "template_jcycuhp";
+
+(function(){
+  emailjs.init(EMAILJS_PUBLIC_KEY);
+})();
+
+// =====================
+// OTP state
+// =====================
+let verificationCode = null;
+let pendingUser = null;
+
+// strict domain check (prevents @shirakatsy.am.fake etc.)
+const schoolEmailPattern = /^[a-zA-Z0-9._%+-]+@shirakatsy\.am$/;
+
+function generateCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 window.onload = function() {
   const user = localStorage.getItem("user");
@@ -224,33 +261,77 @@ function showFeedback(message, type) {
   feedback.style.display = "block";
 }
 
+// =====================
+// Register: send OTP to email first
+// =====================
 function register() {
   const name = document.getElementById("name").value.trim();
-  const email = document.getElementById("email").value.trim();
+  const email = document.getElementById("email").value.trim().toLowerCase();
   const password = document.getElementById("password").value;
 
   if (!name || !email || !password)
     return showFeedback("Please fill in all fields.", "error");
 
-  if (!email.endsWith("@shirakatsy.am"))
-    return showFeedback("You must use your school email (@shirakatsy.am)", "error");
+  if (!schoolEmailPattern.test(email))
+    return showFeedback("Only school emails (@shirakatsy.am) are allowed.", "error");
 
   if (password.length < 6)
     return showFeedback("Password must be at least 6 characters.", "error");
 
   let users = JSON.parse(localStorage.getItem("users")) || [];
-
   if (users.find(u => u.email === email))
     return showFeedback("User already exists.", "error");
 
-  users.push({ name, email, password });
-  localStorage.setItem("users", JSON.stringify(users));
+  verificationCode = generateCode();
+  pendingUser = { name, email, password };
 
-  showFeedback("Registration successful! You can now login.", "success");
+  emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+    to_email: email,
+    code: verificationCode
+  })
+  .then(() => {
+    document.getElementById("codeSection").style.display = "block";
+    showFeedback("Verification code sent to your email! Enter it below.", "success");
+  })
+  .catch((error) => {
+    console.error(error);
+    showFeedback("Failed to send verification email.", "error");
+  });
 }
 
+// =====================
+// Verify OTP: create user after correct code
+// =====================
+function verifyCode() {
+  const entered = document.getElementById("codeInput").value.trim();
+
+  if (!verificationCode || !pendingUser)
+    return showFeedback("Press Register first to receive a code.", "error");
+
+  if (!entered)
+    return showFeedback("Please enter the verification code.", "error");
+
+  if (entered !== verificationCode)
+    return showFeedback("Wrong verification code.", "error");
+
+  let users = JSON.parse(localStorage.getItem("users")) || [];
+  users.push(pendingUser);
+  localStorage.setItem("users", JSON.stringify(users));
+
+  verificationCode = null;
+  pendingUser = null;
+
+  document.getElementById("codeSection").style.display = "none";
+  document.getElementById("codeInput").value = "";
+
+  showFeedback("Email verified! Registration complete. You can now login.", "success");
+}
+
+// =====================
+// Login / Guest / UI
+// =====================
 function login() {
-  const email = document.getElementById("email").value.trim();
+  const email = document.getElementById("email").value.trim().toLowerCase();
   const password = document.getElementById("password").value;
 
   let users = JSON.parse(localStorage.getItem("users")) || [];
@@ -287,7 +368,6 @@ function toggleGuide() {
 function sendFeedback() {
   window.location.href = "mailto:KhachaturyanVache@shirakatsy.am?subject=Physics Lab Feedback";
 }
-
 </script>
 
 </body>
